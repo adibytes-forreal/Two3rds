@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>2Thirds</title>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      background: #0f172a;
+      color: white;
+      text-align: center;
+    }
+
+    .box {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 15px;
+      width: 320px;
+      margin: auto;
+      margin-bottom: 20px;
+    }
+
+    input, button {
+      width: 90%;
+      padding: 10px;
+      margin: 10px;
+      border-radius: 10px;
+      border: none;
+    }
+
+    button {
+      background: #38bdf8;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #888;
+      cursor: not-allowed;
+    }
+
+    .selected {
+      background: #22c55e !important;
+      color: black;
+    }
+
+    .game {
+      background: #334155;
+      margin: 10px;
+      padding: 10px;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    .bet, .leader {
+      background: #334155;
+      margin: 10px;
+      padding: 10px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>🔥 2Thirds 🔥</h1>
+
+<div class="box">
+  <input id="nickname" placeholder="Enter nickname">
+  <p>💰 Coins: <span id="balance">50</span></p>
+  <input id="coins" type="number" placeholder="Coins to bet" min="1">
+
+  <h3>Pick Team:</h3>
+  <button onclick="selectSide(1)" id="team1Btn">Team 1</button>
+  <button onclick="selectSide(2)" id="team2Btn">Team 2</button>
+
+  <button onclick="placeBet()" id="placeBetBtn">Place Bet</button>
+</div>
+
+<h2>⚽ Games</h2>
+<div id="games"></div>
+
+<h2>📊 Live Bets</h2>
+<div id="bets"></div>
+
+<h2>🏆 Leaderboard</h2>
+<div id="leaderboard"></div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "PASTE",
+    authDomain: "PASTE",
+    projectId: "PASTE"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let balance = 50;
+  let selectedGame = null;
+  let selectedSide = "";
+  let nickname = "";
+
+  const placeBetBtn = document.getElementById("placeBetBtn");
+
+  // 🎮 GAMES
+  const games = [
+    { group: "A", team1: "Mexico", team2: "South Africa" },
+    { group: "A", team1: "South Korea", team2: "Czechia" },
+    { group: "B", team1: "Canada", team2: "Bosnia" },
+    { group: "D", team1: "USA", team2: "Paraguay" },
+    { group: "C", team1: "Brazil", team2: "Morocco" },
+    { group: "E", team1: "Germany", team2: "Curaçao" },
+    { group: "F", team1: "Netherlands", team2: "Japan" },
+    { group: "H", team1: "Spain", team2: "Uruguay" }
+  ];
+
+  function loadGames() {
+    const container = document.getElementById("games");
+    container.innerHTML = "";
+
+    games.forEach(game => {
+      const div = document.createElement("div");
+      div.className = "game";
+
+      div.innerHTML = `
+        <strong>${game.team1} vs ${game.team2}</strong><br>
+        Group ${game.group}
+      `;
+
+      div.onclick = () => {
+        selectedGame = game;
+        selectedSide = "";
+
+        document.getElementById("team1Btn").innerText = game.team1;
+        document.getElementById("team2Btn").innerText = game.team2;
+
+        document.getElementById("team1Btn").classList.remove("selected");
+        document.getElementById("team2Btn").classList.remove("selected");
+      };
+
+      container.appendChild(div);
+    });
+  }
+
+  function selectSide(num) {
+    if (!selectedGame) {
+      alert("Pick a game first!");
+      return;
+    }
+
+    const team1Btn = document.getElementById("team1Btn");
+    const team2Btn = document.getElementById("team2Btn");
+
+    team1Btn.classList.remove("selected");
+    team2Btn.classList.remove("selected");
+
+    if (num === 1) {
+      selectedSide = selectedGame.team1;
+      team1Btn.classList.add("selected");
+    } else {
+      selectedSide = selectedGame.team2;
+      team2Btn.classList.add("selected");
+    }
+  }
+
+  async function initUser() {
+    nickname = document.getElementById("nickname").value.trim();
+    if (!nickname) return;
+
+    const userRef = db.collection("users").doc(nickname);
+    const doc = await userRef.get();
+
+    if (!doc.exists) {
+      await userRef.set({ balance: 50 });
+      balance = 50;
+    } else {
+      balance = doc.data().balance;
+    }
+
+    document.getElementById("balance").innerText = balance;
+    checkBalance();
+  }
+
+  document.getElementById("nickname").addEventListener("change", initUser);
+
+  function checkBalance() {
+    placeBetBtn.disabled = balance <= 0;
+  }
+
+  async function placeBet() {
+    nickname = document.getElementById("nickname").value.trim();
+    const coins = parseInt(document.getElementById("coins").value);
+
+    if (!nickname) {
+      alert("Enter your nickname first!");
+      return;
+    }
+
+    if (!coins || !selectedGame || !selectedSide) {
+      alert("Fill everything!");
+      return;
+    }
+
+    const userRef = db.collection("users").doc(nickname);
+    const userDoc = await userRef.get();
+
+    let userBalance = userDoc.exists ? userDoc.data().balance : 50;
+
+    if (coins > userBalance) {
+      alert("Not enough coins!");
+      return;
+    }
+
+    userBalance -= coins;
+    await userRef.set({ balance: userBalance });
+    balance = userBalance;
+    document.getElementById("balance").innerText = balance;
+    checkBalance();
+
+    await db.collection("bets").add({
+      name: nickname,
+      game: selectedGame.team1 + " vs " + selectedGame.team2,
+      group: selectedGame.group,
+      side: selectedSide,
+      coins
+    });
+
+    document.getElementById("coins").value = "";
+  }
+
+  db.collection("bets").onSnapshot(snapshot => {
+    const betsDiv = document.getElementById("bets");
+    betsDiv.innerHTML = "";
+
+    snapshot.forEach(doc => {
+      const bet = doc.data();
+      const div = document.createElement("div");
+      div.className = "bet";
+      div.innerHTML = `
+        <strong>${bet.name}</strong><br>
+        ${bet.game} (Group ${bet.group})<br>
+        Picked: ${bet.side}<br>
+        ${bet.coins} coins
+      `;
+      betsDiv.appendChild(div);
+    });
+  });
+
+  db.collection("users").onSnapshot(snapshot => {
+    const board = document.getElementById("leaderboard");
+    board.innerHTML = "";
+
+    const users = [];
+    snapshot.forEach(doc => users.push(doc.data()));
+
+    users.sort((a, b) => b.balance - a.balance);
+
+    users.forEach(u => {
+      const div = document.createElement("div");
+      div.className = "leader";
+      div.innerHTML = `🏅 ${u.name}: ${u.balance} coins left`;
+      board.appendChild(div);
+    });
+  });
+
+  loadGames();
+</script>
+
+</body>
+</html>
